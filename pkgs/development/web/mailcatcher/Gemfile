@@ -1,2 +1,5 @@
-source 'https://rubygems.org'
-gem 'mailcatcher'
+source 'https://rubygems.org' do
+  gem 'mailcatcher'
+  gem 'eventmachine', '~> 1.2.7'
+  gem 'sqlite3', '~> 1.4.0'
+end
