@@ -36,7 +36,7 @@ buildDotnetModule rec {
     homepage = "https://github.com/fsharp/FsAutoComplete";
     changelog = "https://github.com/fsharp/FsAutoComplete/releases/tag/v${version}";
     license = licenses.asl20;
-    platforms = platforms.linux;
+    platforms = with platforms; linux ++ darwin;
     maintainers = with maintainers; [ gbtb mdarocha ];
   };
 }
