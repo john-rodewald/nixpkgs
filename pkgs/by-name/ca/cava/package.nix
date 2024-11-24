@@ -64,6 +64,7 @@ stdenv.mkDerivation rec {
 
   preAutoreconf = ''
     echo ${version} > version
+    mkdir m4
   '';
 
   meta = with lib; {
