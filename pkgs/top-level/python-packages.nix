@@ -4559,6 +4559,10 @@ self: super: with self; {
 
   django-axes = callPackage ../development/python-modules/django-axes { };
 
+  django-bitfield = callPackage ../development/python-modules/django-bitfield { };
+
+  django-bmemcached = callPackage ../development/python-modules/django-bmemcached { };
+
   django-bootstrap3 = callPackage ../development/python-modules/django-bootstrap3 { };
 
   django-bootstrap4 = callPackage ../development/python-modules/django-bootstrap4 { };
@@ -8869,6 +8873,8 @@ self: super: with self; {
 
   jstyleson = callPackage ../development/python-modules/jstyleson { };
 
+  jsx-lexer = callPackage ../development/python-modules/jsx-lexer { };
+
   jug = callPackage ../development/python-modules/jug { };
 
   juliandate = callPackage ../development/python-modules/juliandate { };
@@ -10142,6 +10148,8 @@ self: super: with self; {
   lmtpd = callPackage ../development/python-modules/lmtpd { };
 
   lnkparse3 = callPackage ../development/python-modules/lnkparse3 { };
+
+  loadcredential = callPackage ../development/python-modules/loadcredential { };
 
   loca = callPackage ../development/python-modules/loca { };
 
@@ -14659,6 +14667,8 @@ self: super: with self; {
 
   pydantic-monty = callPackage ../development/python-modules/pydantic-monty { };
 
+  pydantic-partials = callPackage ../development/python-modules/pydantic-partials { };
+
   pydantic-scim = callPackage ../development/python-modules/pydantic-scim { };
 
   pydantic-settings = callPackage ../development/python-modules/pydantic-settings { };
@@ -15598,6 +15608,8 @@ self: super: with self; {
   pyoctoprintapi = callPackage ../development/python-modules/pyoctoprintapi { };
 
   pyodbc = callPackage ../development/python-modules/pyodbc { };
+
+  pyoembed = callPackage ../development/python-modules/pyoembed { };
 
   pyogg = callPackage ../development/python-modules/pyogg { };
 
@@ -16722,6 +16734,8 @@ self: super: with self; {
 
   python-binance = callPackage ../development/python-modules/python-binance { };
 
+  python-binary-memcached = callPackage ../development/python-modules/python-binary-memcached { };
+
   python-bitcoinlib = callPackage ../development/python-modules/python-bitcoinlib { };
 
   python-blockchain-api = callPackage ../development/python-modules/python-blockchain-api { };
@@ -16729,6 +16743,8 @@ self: super: with self; {
   python-box = callPackage ../development/python-modules/python-box { };
 
   python-bsblan = callPackage ../development/python-modules/python-bsblan { };
+
+  python-bsonstream = callPackage ../development/python-modules/python-bsonstream { };
 
   python-bugzilla = callPackage ../development/python-modules/python-bugzilla { };
 
@@ -20270,6 +20286,8 @@ self: super: with self; {
 
   takethetime = callPackage ../development/python-modules/takethetime { };
 
+  talon-core = callPackage ../development/python-modules/talon-core { };
+
   tami4edgeapi = callPackage ../development/python-modules/tami4edgeapi { };
 
   tank-utility = callPackage ../development/python-modules/tank-utility { };
@@ -22779,6 +22797,8 @@ self: super: with self; {
 
   xsdata-pydantic = callPackage ../development/python-modules/xsdata-pydantic { };
 
+  xsentinels = callPackage ../development/python-modules/xsentinels { };
+
   xstatic = callPackage ../development/python-modules/xstatic { };
 
   xstatic-asciinema-player = callPackage ../development/python-modules/xstatic-asciinema-player { };
@@ -23088,6 +23108,8 @@ self: super: with self; {
   zstd = callPackage ../development/python-modules/zstd { inherit (pkgs) zstd; };
 
   zulip = callPackage ../development/python-modules/zulip { };
+
+  zulip-bots = callPackage ../development/python-modules/zulip-bots { };
 
   zulip-emoji-mapping = callPackage ../development/python-modules/zulip-emoji-mapping { };
 

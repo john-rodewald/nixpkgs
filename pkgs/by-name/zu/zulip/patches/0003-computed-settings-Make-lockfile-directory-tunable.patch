@@ -1,0 +1,44 @@
+From b3ab7c95fc23f04010caeacce3e0cd7eff2104a0 Mon Sep 17 00:00:00 2001
+From: sinavir <sinavir@sinavir.fr>
+Date: Sat, 13 Sep 2025 09:21:21 +0200
+Subject: computed-settings: Make lockfile directory tunable
+
+---
+ zproject/computed_settings.py      | 6 +-----
+ zproject/prod_settings_template.py | 2 ++
+ 2 files changed, 3 insertions(+), 5 deletions(-)
+
+diff --git a/zproject/computed_settings.py b/zproject/computed_settings.py
+index 8cf2e94c30..b9128138b5 100644
+--- a/zproject/computed_settings.py
++++ b/zproject/computed_settings.py
+@@ -44,6 +44,7 @@ from .configured_settings import (
+     GOOGLE_OAUTH2_CLIENT_ID,
+     IS_DEV_DROPLET,
+     LOCAL_UPLOADS_DIR,
++    LOCKFILE_DIRECTORY,
+     MEMCACHED_LOCATION,
+     MEMCACHED_USERNAME,
+     PUSH_NOTIFICATION_BOUNCER_URL,
+@@ -772,11 +773,6 @@ REGISTRATION_LOG_PATH = zulip_path("/var/log/zulip/registration.log")
+ 
+ ZULIP_WORKER_TEST_FILE = zulip_path("/var/log/zulip/zulip-worker-test-file")
+ 
+-LOCKFILE_DIRECTORY = (
+-    "/srv/zulip-locks" if not DEVELOPMENT else os.path.join(os.path.join(DEPLOY_ROOT, "var/locks"))
+-)
+-
+-
+ if IS_WORKER:
+     FILE_LOG_PATH = WORKER_LOG_PATH
+ else:
+diff --git a/zproject/prod_settings_template.py b/zproject/prod_settings_template.py
+index 319ef58db4..afdfc44634 100644
+--- a/zproject/prod_settings_template.py
++++ b/zproject/prod_settings_template.py
+@@ -981,3 +981,5 @@ CAMO_URI = "/external_content/"
+ 
+ ## Nixos specific settings
+ TORNADO_QUEUE_FILENAME_PATTERN = "/var/lib/zulip/tornado_event_queues%s.json"
++
++LOCKFILE_DIRECTORY = "/var/lib/zulip/zulip-locks"

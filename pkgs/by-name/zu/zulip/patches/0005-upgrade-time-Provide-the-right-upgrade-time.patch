@@ -1,0 +1,42 @@
+From a507fc60e859e8bc6b438851d12effde829fe6d7 Mon Sep 17 00:00:00 2001
+From: sinavir <sinavir@sinavir.fr>
+Date: Fri, 27 Jun 2025 20:07:27 +0200
+Subject: upgrade-time: Provide the right upgrade time
+
+Since our tree lives in the nix-store, upstreams tricks to guess the
+release time with mtimes are unsuccessful
+---
+ zerver/lib/compatibility.py | 12 ++++++------
+ 1 file changed, 6 insertions(+), 6 deletions(-)
+
+diff --git a/zerver/lib/compatibility.py b/zerver/lib/compatibility.py
+index fb02c5fbca..3f7fc76939 100644
+--- a/zerver/lib/compatibility.py
++++ b/zerver/lib/compatibility.py
+@@ -13,9 +13,7 @@ from zerver.signals import get_device_browser
+ # LAST_SERVER_UPGRADE_TIME is the last time the server had a version deployed.
+ if settings.PRODUCTION:  # nocoverage
+     timestamp = os.path.basename(os.path.abspath(settings.DEPLOY_ROOT))
+-    LAST_SERVER_UPGRADE_TIME = datetime.strptime(timestamp, "%Y-%m-%d-%H-%M-%S").replace(
+-        tzinfo=timezone.utc
+-    )
++    LAST_SERVER_UPGRADE_TIME = datetime.fromtimestamp(0, tz=timezone.utc)
+ else:
+     LAST_SERVER_UPGRADE_TIME = timezone_now()
+ 
+@@ -26,10 +24,12 @@ def is_outdated_server(user_profile: UserProfile | None) -> bool:
+     # tarball was built.  Checking this allows us to catch cases where
+     # someone has upgraded in the last year but to a release more than
+     # a year old.
+-    git_version_path = os.path.join(settings.DEPLOY_ROOT, "version.py")
+-    release_build_time = datetime.fromtimestamp(os.path.getmtime(git_version_path), timezone.utc)
++    build_time_path = os.path.join(settings.DEPLOY_ROOT, "build_timestamp")
++    with open(build_time_path) as f:
++        build_time = f.readline().strip()
++    release_build_time = datetime.fromisoformat(build_time)
+ 
+-    version_no_newer_than = min(LAST_SERVER_UPGRADE_TIME, release_build_time)
++    version_no_newer_than = release_build_time
+     deadline = version_no_newer_than + timedelta(days=settings.SERVER_UPGRADE_NAG_DEADLINE_DAYS)
+ 
+     if user_profile is None or not user_profile.is_realm_admin:

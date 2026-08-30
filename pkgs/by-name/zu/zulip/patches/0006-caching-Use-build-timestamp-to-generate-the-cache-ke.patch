@@ -1,0 +1,87 @@
+From 9d3517cd3879ae19edb69c71309431d2678b37d8 Mon Sep 17 00:00:00 2001
+From: sinavir <sinavir@sinavir.fr>
+Date: Fri, 27 Jun 2025 21:27:21 +0200
+Subject: caching: Use build timestamp to generate the cache key
+
+By default zulip uses a statefull mechanism to store a cache-key prefix.
+We instead use the build-time as cache prefix
+---
+ zerver/lib/cache.py | 51 +++++++++------------------------------------
+ 1 file changed, 10 insertions(+), 41 deletions(-)
+
+diff --git a/zerver/lib/cache.py b/zerver/lib/cache.py
+index 3b4870bbcd..66cd30ac79 100644
+--- a/zerver/lib/cache.py
++++ b/zerver/lib/cache.py
+@@ -28,6 +28,13 @@ if TYPE_CHECKING:
+ 
+ MEMCACHED_MAX_KEY_LENGTH = 250
+ 
++
++build_time_path = os.path.join(settings.DEPLOY_ROOT, "build_timestamp")
++with open(build_time_path) as f:
++    build_time = f.readline().strip()
++
++GENERATED_KEY_PREFIX: str = f"{build_time}:"
++
+ ParamT = ParamSpec("ParamT")
+ ReturnT = TypeVar("ReturnT")
+ 
+@@ -62,13 +69,7 @@ def update_cached_cache_key_prefixes() -> list[str]:
+     # Because the list of cache prefixes can only be derived from
+     # reading disk, we cache the list of cache prefixes, itself, in
+     # the cache.
+-    found_prefixes: set[str] = set()
+-    for deploy_dir in get_recent_deployments(None):
+-        filename = os.path.join(deploy_dir, "var", "remote_cache_prefix")
+-        if not os.path.exists(filename):
+-            continue
+-        with open(filename) as f:
+-            found_prefixes.add(f.readline().removesuffix("\n"))
++    found_prefixes: set[str] = {GENERATED_KEY_PREFIX}
+ 
+     # We reach into the bmemcached client directly to do this set
+     # *without* compression, so that changes in our choice of
+@@ -84,40 +85,8 @@ def update_cached_cache_key_prefixes() -> list[str]:
+ 
+ 
+ def get_or_create_key_prefix() -> str:
+-    if settings.PUPPETEER_TESTS:
+-        # This sets the prefix for the benefit of the Puppeteer tests.
+-        #
+-        # Having a fixed key is OK since we don't support running
+-        # multiple copies of the Puppeteer tests at the same time anyway.
+-        return "puppeteer_tests:"
+-    elif settings.TEST_SUITE:
+-        # The Python tests overwrite KEY_PREFIX on each test, but use
+-        # this codepath as well, just to save running the more complex
+-        # code below for reading the normal key prefix.
+-        return "django_tests_unused:"
+-
+-    # directory `var` should exist in production
+-    os.makedirs(os.path.join(settings.DEPLOY_ROOT, "var"), exist_ok=True)
+-
+-    filename = os.path.join(settings.DEPLOY_ROOT, "var", "remote_cache_prefix")
+-    try:
+-        with open(filename, "x") as f:
+-            prefix = secrets.token_hex(16) + ":"
+-            f.write(prefix + "\n")
+-    except FileExistsError:
+-        tries = 1
+-        while tries < 10:
+-            with open(filename) as f:
+-                prefix = f.readline().removesuffix("\n")
+-            if len(prefix) == 33:
+-                break
+-            tries += 1
+-            prefix = ""
+-            time.sleep(0.5)
+-
+-    if not prefix:
+-        print("Could not read remote cache key prefix file")
+-        sys.exit(1)
++
++    prefix = GENERATED_KEY_PREFIX
+ 
+     update_cached_cache_key_prefixes()
+     return prefix

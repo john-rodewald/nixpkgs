@@ -1,0 +1,25 @@
+From b044368e4fb1196f8d0df62ef4858059704eea49 Mon Sep 17 00:00:00 2001
+From: sinavir <sinavir@sinavir.fr>
+Date: Fri, 27 Jun 2025 19:25:35 +0200
+Subject: computed-settings: Use the static assets in the release
+
+We generate the static assets directly in the zulip derivation (hence
+the DEPLOY_ROOT prefix). We do not need zulip's fancy caching machanism
+for static assets since we have store optimisation
+---
+ zproject/computed_settings.py | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/zproject/computed_settings.py b/zproject/computed_settings.py
+index f69c9dd171..207d999334 100644
+--- a/zproject/computed_settings.py
++++ b/zproject/computed_settings.py
+@@ -623,7 +623,7 @@ LOCAL_FILES_DIR = os.path.join(LOCAL_UPLOADS_DIR, "files") if LOCAL_UPLOADS_DIR
+ if not DEBUG:
+     STORAGES = {"staticfiles": {"BACKEND": "zerver.lib.storage.ZulipStorage"}}
+     if PRODUCTION:
+-        STATIC_ROOT = "/home/zulip/prod-static"
++        STATIC_ROOT = f"{DEPLOY_ROOT}/prod-static/serve"
+     else:
+         STATIC_ROOT = os.path.abspath(os.path.join(DEPLOY_ROOT, "prod-static/serve"))
+ 

@@ -1,0 +1,22 @@
+From f837f5f55c7174322792666517e12ba77ade62da Mon Sep 17 00:00:00 2001
+From: sinavir <sinavir@sinavir.fr>
+Date: Mon, 18 Aug 2025 16:44:09 +0200
+Subject: fix(backups): Use pg_dump from path
+
+---
+ zerver/management/commands/backup.py | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/zerver/management/commands/backup.py b/zerver/management/commands/backup.py
+index 6aa0a90e30..6133130b4a 100644
+--- a/zerver/management/commands/backup.py
++++ b/zerver/management/commands/backup.py
+@@ -76,7 +76,7 @@ class Command(ZulipBaseCommand):
+ 
+             if not options["skip_db"]:
+                 pg_dump_command = [
+-                    f"/usr/lib/postgresql/{major_pg_version}/bin/pg_dump",
++                    "pg_dump",
+                     "--format=directory",
+                     "--file=" + os.path.join(tmp, "zulip-backup", "database"),
+                     "--username=" + settings.DATABASES["default"]["USER"],

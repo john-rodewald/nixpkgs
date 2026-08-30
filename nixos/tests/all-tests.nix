@@ -1998,6 +1998,10 @@ in
   zoom-us = runTest ./zoom-us.nix;
   zram-generator = runTest ./zram-generator.nix;
   zrepl = runTest ./zrepl.nix;
+  zulip = runTest ./zulip/default.nix;
+  zulip-backup = runTest ./zulip/backup.nix;
+  zulip-restart = runTest ./zulip/restart.nix;
+  zulip-tornado = runTest ./zulip/tornado.nix;
   zwave-js = runTest ./zwave-js.nix;
   zwave-js-ui = runTest ./zwave-js-ui.nix;
   # keep-sorted end

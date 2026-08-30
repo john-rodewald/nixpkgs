@@ -1,0 +1,100 @@
+From 7b6264f4f14535b060c7319c55e315f3168e8a91 Mon Sep 17 00:00:00 2001
+From: sinavir <sinavir@sinavir.fr>
+Date: Sun, 12 Oct 2025 23:27:43 +0200
+Subject: backups: fix restore script
+
+- Deleted parts devoted to restoring settings as these are managed by
+nixos
+- Removed restoration targets lying in the nix store
+---
+ scripts/setup/restore-backup | 50 ++++--------------------------------
+ 1 file changed, 5 insertions(+), 45 deletions(-)
+
+diff --git a/scripts/setup/restore-backup b/scripts/setup/restore-backup
+index 4fb8695943..56ce93def3 100755
+--- a/scripts/setup/restore-backup
++++ b/scripts/setup/restore-backup
+@@ -15,15 +15,9 @@ POSTGRES_PWENT = get_postgres_pwent()
+ 
+ parser = argparse.ArgumentParser()
+ parser.add_argument("tarball", help="Filename of input tarball")
+-parser.add_argument(
+-    "--keep-settings", help="Do not overwrite local /etc/zulip/settings.py", action="store_true"
+-)
+-parser.add_argument(
+-    "--keep-zulipconf", help="Do not overwrite local /etc/zulip/zulip.conf", action="store_true"
+-)
+ 
+ 
+-def restore_backup(tarball_file: IO[bytes], keep_settings: bool, keep_zulipconf: bool) -> None:
++def restore_backup(tarball_file: IO[bytes]) -> None:
+     assert_running_as_root()
+     su_to_zulip(save_suid=True)
+ 
+@@ -37,11 +31,7 @@ def restore_backup(tarball_file: IO[bytes], keep_settings: bool, keep_zulipconf:
+     # next).  Ignore errors if zulip-backup/settings is not present
+     # (E.g. because this is a development backup).
+     tarball_file.seek(0, 0)
+-    excludes = []
+-    if keep_settings:
+-        excludes += ["--exclude=settings.py"]
+-    if keep_zulipconf:
+-        excludes += ["--exclude=zulip.conf"]
++    excludes = ["--exclude=settings.py", "--exclude=zulip.conf"]
+     run(
+         [
+             "tar",
+@@ -67,6 +57,8 @@ def restore_backup(tarball_file: IO[bytes], keep_settings: bool, keep_zulipconf:
+         # configured to locally host uploads.
+         paths.append(("uploads", os.path.join(settings.DEPLOY_ROOT, settings.LOCAL_UPLOADS_DIR)))
+ 
++    # Remove paths in the nix store as they are read-only
++    paths = [ (a, b) for a, b in paths if not b.startswith("/nix/store") ]
+     with tempfile.TemporaryDirectory(prefix="zulip-restore-backup-") as tmp:
+         uid = os.getuid()
+         gid = os.getgid()
+@@ -133,38 +125,6 @@ def restore_backup(tarball_file: IO[bytes], keep_settings: bool, keep_zulipconf:
+         )
+         os.setresuid(0, 0, 0)
+ 
+-        if settings.PRODUCTION:
+-            # In case we are restoring a backup from an older Zulip
+-            # version, there may be new secrets to generate.
+-            run(
+-                [
+-                    os.path.join(settings.DEPLOY_ROOT, "scripts", "setup", "generate_secrets.py"),
+-                    "--production",
+-                ]
+-            )
+-
+-            # If there is a local RabbitMQ, we need to reconfigure it
+-            # to ensure the RabbitMQ password matches the value in the
+-            # restored zulip-secrets.conf.  We need to be careful to
+-            # only do this if RabbitMQ is configured to run locally on
+-            # the system.
+-            rabbitmq_host = subprocess.check_output(
+-                [
+-                    os.path.join(settings.DEPLOY_ROOT, "scripts", "get-django-setting"),
+-                    "RABBITMQ_HOST",
+-                ],
+-                text=True,
+-            ).strip()
+-            if rabbitmq_host in ["127.0.0.1", "::1", "localhost", "localhost6"]:
+-                run([os.path.join(settings.DEPLOY_ROOT, "scripts", "setup", "configure-rabbitmq")])
+-
+-            # In production, we also need to do a `zulip-puppet-apply`
+-            # in order to apply any configuration from
+-            # /etc/zulip/zulip.conf to this system, since it was
+-            # originally installed without the restored copy of that
+-            # file.
+-            run([os.path.join(settings.DEPLOY_ROOT, "scripts", "zulip-puppet-apply"), "-f"])
+-
+         # Now, restore the database backup using pg_restore.  This
+         # needs to run after zulip-puppet-apply to ensure full-text
+         # search extensions are available and installed.
+@@ -184,4 +144,4 @@ if __name__ == "__main__":
+     args = parser.parse_args()
+ 
+     with open(args.tarball, "rb") as tarball_file:
+-        restore_backup(tarball_file, args.keep_settings, args.keep_zulipconf)
++        restore_backup(tarball_file)

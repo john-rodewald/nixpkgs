@@ -1,0 +1,35 @@
+From 7c0cf0db6e49c2d79a9633ad4ac17da7edefde84 Mon Sep 17 00:00:00 2001
+From: sinavir <sinavir@sinavir.fr>
+Date: Tue, 28 Apr 2026 16:33:56 +0200
+Subject: frontend: fix corepack invocations
+
+---
+ scripts/lib/node_cache.py | 1 -
+ tools/build-help-center   | 2 +-
+ 2 files changed, 1 insertion(+), 2 deletions(-)
+
+diff --git a/scripts/lib/node_cache.py b/scripts/lib/node_cache.py
+index 0cb8f3940e..f6d3367323 100644
+--- a/scripts/lib/node_cache.py
++++ b/scripts/lib/node_cache.py
+@@ -29,7 +29,6 @@ def setup_node_modules(production: bool = DEFAULT_PRODUCTION) -> None:
+     if not skip:
+         run(
+             [
+-                "/usr/local/bin/corepack",
+                 "pnpm",
+                 "install",
+                 "--frozen-lockfile",
+diff --git a/tools/build-help-center b/tools/build-help-center
+index 8273f4997c..58b7681fb6 100755
+--- a/tools/build-help-center
++++ b/tools/build-help-center
+@@ -41,7 +41,7 @@ def run() -> None:
+     env["SUPPORT_EMAIL"] = parseaddr(settings.ZULIP_ADMINISTRATOR)[1]
+     env["CORPORATE_ENABLED"] = str(settings.CORPORATE_ENABLED).lower()
+     env["SHOW_RELATIVE_LINKS"] = str(args.show_relative_links).lower()
+-    build_command = ["/usr/local/bin/corepack", "pnpm", "build"]
++    build_command = ["pnpm", "build"]
+     if args.out_dir:
+         build_command += ["--outDir", args.out_dir]
+ 

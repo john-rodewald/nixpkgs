@@ -1,0 +1,398 @@
+From 6193fdc5800ebb34204a2a86466b6e1553742d66 Mon Sep 17 00:00:00 2001
+From: sinavir <sinavir@sinavir.fr>
+Date: Fri, 19 Dec 2025 00:11:41 +0100
+Subject: scripts: adapt restart and reload scripts to nixos
+
+---
+ scripts/lib/systemd.py     |  36 ++++++++++
+ scripts/lib/zulip_tools.py |   6 +-
+ scripts/reload-clients     |  13 ++--
+ scripts/restart-server     | 132 +++++++++++++------------------------
+ 4 files changed, 92 insertions(+), 95 deletions(-)
+ create mode 100644 scripts/lib/systemd.py
+
+diff --git a/scripts/lib/systemd.py b/scripts/lib/systemd.py
+new file mode 100644
+index 0000000000..027bb78dab
+--- /dev/null
++++ b/scripts/lib/systemd.py
+@@ -0,0 +1,36 @@
++import json
++import subprocess
++
++
++def list_systemd_processes(
++    filter_names: list[str] | None = None,
++    *,
++    only_running: bool | None = None,
++    systemctl_command: str = "systemctl",
++) -> list[str]:
++    sout = subprocess.check_output(
++        (
++            [
++                "systemctl",
++                "--output",
++                "json",
++                "--no-page",
++                "list-units",
++            ]
++            + (
++                ["--state", "active" if only_running else "inactive,failed"]
++                if only_running is not None
++                else []
++            )
++            + filter_names
++            if filter_names
++            else []
++        ),
++    )
++    units = json.loads(sout)
++    return [u["unit"] for u in units]
++
++
++def list_systemd_dependencies(unit: str, systemctl_command: str = "systemctl") -> list[str]:
++    sout = subprocess.check_output([systemctl_command, "--no-page", "list-dependencies", unit])
++    return [u.strip() for u in sout.split(b"\n") if u.startswith(b"  ")]
+diff --git a/scripts/lib/zulip_tools.py b/scripts/lib/zulip_tools.py
+index cf9813696a..4513abffc3 100755
+--- a/scripts/lib/zulip_tools.py
++++ b/scripts/lib/zulip_tools.py
+@@ -22,6 +22,10 @@ from datetime import datetime, timedelta
+ from typing import IO, Any, Literal, overload
+ from urllib.parse import SplitResult
+ 
++from django.conf import settings as django_settings
++
++os.environ.setdefault("DJANGO_SETTINGS_MODULE", "zproject.settings")
++
+ DEPLOYMENTS_DIR = "/home/zulip/deployments"
+ LOCK_DIR = os.path.join(DEPLOYMENTS_DIR, "lock")
+ TIMESTAMP_FORMAT = "%Y-%m-%d-%H-%M-%S"
+@@ -609,7 +613,7 @@ def get_tornado_ports(config_file: configparser.RawConfigParser) -> list[int]:
+             }
+         )
+     if not ports:
+-        ports = [9800]
++        ports = django_settings.TORNADO_PORTS
+     return ports
+ 
+ 
+diff --git a/scripts/reload-clients b/scripts/reload-clients
+index 919a0e824a..41209db71e 100755
+--- a/scripts/reload-clients
++++ b/scripts/reload-clients
+@@ -1,16 +1,13 @@
+ #!/usr/bin/env python3
+ import argparse
+-import configparser
+ import logging
+ import os
+ import sys
+ import time
+ 
+-sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
+-from scripts.lib.setup_path import setup_path
+-
+-setup_path()
++import loadcredential
+ 
++sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
+ import requests
+ from requests.adapters import HTTPAdapter
+ from urllib3.util import Retry
+@@ -36,9 +33,9 @@ parser.add_argument("--background", action="store_true", help="Daemonize the pro
+ args = parser.parse_args()
+ reload_rate = args.rate
+ 
+-secret_config_file = configparser.RawConfigParser()
+-secret_config_file.read("/etc/zulip/zulip-secrets.conf")
+-shared_secret = get_config(secret_config_file, "secrets", "shared_secret")
++
++credentials = loadcredential.Credentials()
++shared_secret = credentials.get("shared_secret")
+ assert shared_secret
+ 
+ # Perform relatively slow retries (2s, 4s, 8s) with backoff, including
+diff --git a/scripts/restart-server b/scripts/restart-server
+index a16661afb7..f3809833b2 100755
+--- a/scripts/restart-server
++++ b/scripts/restart-server
+@@ -4,29 +4,20 @@ import json
+ import logging
+ import os
+ import pwd
+-import shlex
+ import subprocess
+ import sys
+ import time
+ 
+ sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
+-from scripts.lib.setup_path import setup_path
+ 
+-setup_path()
+-
+-from scripts.lib.supervisor import list_supervisor_processes
++from scripts.lib.systemd import list_systemd_dependencies, list_systemd_processes
+ from scripts.lib.zulip_tools import (
+-    DEPLOYMENTS_DIR,
+     ENDC,
+     LOCK_DIR,
+     OKGREEN,
+-    WARNING,
+     get_config,
+     get_config_file,
+     get_tornado_ports,
+-    has_application_server,
+-    has_process_fts_updates,
+-    overwrite_symlink,
+     start_arg_parser,
+     su_to_zulip,
+ )
+@@ -72,18 +63,12 @@ if args.fill_cache:
+     logging.info("Filling memcached caches")
+     subprocess.check_call(["./manage.py", "fill_memcached_caches", "--automated", "--skip-checks"])
+ 
+-current_symlink = os.path.join(DEPLOYMENTS_DIR, "current")
+-last_symlink = os.path.join(DEPLOYMENTS_DIR, "last")
+-change_symlink = os.readlink(current_symlink) != deploy_path
+-if change_symlink:
+-    overwrite_symlink(os.readlink(current_symlink), last_symlink)
+-    overwrite_symlink(deploy_path, current_symlink)
+-
+ config_file = get_config_file()
+ tornado_ports = get_tornado_ports(config_file)
+ workers = []
+ 
+-if has_application_server():
++# The original test is for clustered deployments. Our deployment always return True
++if True:
+     # Start by restarting the workers and similar processes, one at a
+     # time.  Workers can always support processing events with old event
+     # contents, but cannot necessarily understand events enqueued by a
+@@ -96,90 +81,78 @@ if has_application_server():
+     # In those cases, using the glob form is faster -- but if we do need
+     # to iterate, we need to expand the glob.
+     if action == "start" or args.less_graceful:
+-        workers.append("zulip-workers:*")
++        workers.append("zulip-workers.target")
+     else:
+-        workers.extend(list_supervisor_processes(["zulip-workers:*"]))
++        workers.extend(list_systemd_dependencies("zulip-workers.target"))
+ 
+-    if has_application_server(once=True):
++    # The original test is for clustered deployments. Our deployment always return True
++    if True:
+         # These used to be included in "zulip-workers:*"; since we may
+         # be restarting an older version of Zulip, which has not
+         # applied puppet to reload the new list of processes, only
+         # stop them if they currently exist according to
+         # `supervisorctl`.
+         workers.extend(
+-            list_supervisor_processes(
+-                [
+-                    "zulip_deliver_scheduled_emails",
+-                    "zulip_deliver_scheduled_messages",
+-                ]
+-            )
++            [
++                "zulip-deliver_scheduled_emails.service",
++                "zulip-deliver_scheduled_messages.service",
++            ]
+         )
+ 
+     # This is an optional service, so may or may not exist
+-    workers.extend(list_supervisor_processes(["zulip-katex"]))
++    workers.append("zulip-katex.service")
+ 
+     # This does have some Python code, which reads from settings.py,
+     # so we need to restart it on every deploy.  A short outage during
+     # the restart is fine, as clients will transparently retry.
+-    workers.append("zulip-tus")
++    workers.append("zulip-tusd.service")
+ 
+-    workers.extend(list_supervisor_processes(["zulip-email-server"]))
++    # Not supported for the moment
++    # workers.extend(list_supervisor_processes(["zulip-email-server"]))
+ 
+-if has_process_fts_updates():
+-    workers.append("process-fts-updates")
++# has_process_fts_updates assumes things we don't have
++if True:
++    workers.append("zulip-process-fts-updates.service")
+ 
+ # Before we start (re)starting main services, make sure to start any
+ # optional auxiliary services that we don't stop, but do expect to be
+ # running, and aren't currently.  These get new versions by getting
+ # updated supervisor files, and puppet restarts them -- so we never
+ # restart them in here, only start them.
+-aux_services = list_supervisor_processes(["go-camo", "smokescreen"], only_running=False)
++aux_services = ["go-camo.service"]  # Smokescreen is not supported for the moment
+ if aux_services:
+-    subprocess.check_call(["supervisorctl", "start", *aux_services])
++    subprocess.check_call(["systemctl", "start", *aux_services])
+ 
+ if args.only_django:
+     workers = []
+-    check_services = ["zulip-django"]
++    check_services = ["zulip.service"]
+ else:
+-    check_services = [*workers, "zulip-django", "zulip-tornado:*"]
++    check_services = [*workers, "zulip.service", "zulip-tornado.service"]
+ 
+ # If none of the workers nor the application servers are running, this
+ # is actually a "start," not a restart, which means we will defer
+ # workers to later.
+-running_services = list_supervisor_processes(check_services, only_running=True)
++running_services = list_systemd_processes(check_services, only_running=True)
+ if action == "restart" and len(running_services) == 0:
+     action = "start"
+     verbing = "Starting"
+ elif action == "start":
+-    existing_services = list_supervisor_processes(check_services)
++    existing_services = list_systemd_processes(check_services)
+     if existing_services == running_services:
+-        # Check if the version that is currently running is the
+-        # version that we would have started.  We do this via
+-        # comparing our CWD to the CWD of the oldest uwsgi worker.
+-        oldest_pid = subprocess.check_output(
+-            ["pgrep", "--oldest", "--full", "zulip-django uWSGI worker"], text=True
+-        ).strip()
+-        running_cwd = os.readlink(f"/proc/{oldest_pid}/cwd")
+-        if deploy_path != running_cwd:
+-            logging.warning("Mismatch between 'current' symlink and currently-running code!")
+-            logging.warning("Already-running deploy: %s", running_cwd)
+-            logging.warning("We would have started:  %s", deploy_path)
+-            logging.warning("To restart, call %s/scripts/restart-server", deploy_path)
+-        else:
+-            logging.info("Zulip is already started; nothing to do!")
++        logging.info("Zulip is already started; nothing to do!")
+         sys.exit(0)
+ 
+ 
+ def restart_or_start(service: str) -> None:
+     our_verb = action
+-    existing_services = list_supervisor_processes([service])
+-    running_services = list_supervisor_processes([service], only_running=True)
++    existing_services = list_systemd_processes([service])
++    running_services = list_systemd_processes([service], only_running=True)
+     if our_verb == "restart" and len(running_services) == 0:
+         our_verb = "start"
+     elif our_verb == "start" and existing_services == running_services:
+         logging.info("%s already started!", service)
+         return
+-    subprocess.check_call(["supervisorctl", our_verb, service])
++    subprocess.check_call(["systemctl", our_verb, service])
+ 
+ 
+ def ports_as_set(val: int | list[int]) -> frozenset[int]:
+@@ -222,7 +195,7 @@ if action == "restart" and len(workers) > 0:
+         # The less graceful form stops every worker now; we start them
+         # back up at the end.
+         logging.info("Stopping workers")
+-        subprocess.check_call(["supervisorctl", "stop", *workers])
++        subprocess.check_call(["systemctl", "stop", *workers])
+     else:
+         # We cannot pass all of these to one `supervisorctl restart`
+         # because that takes them all down at once, waits until they are
+@@ -232,7 +205,8 @@ if action == "restart" and len(workers) > 0:
+             logging.info("Restarting %s", worker)
+             restart_or_start(worker)
+ 
+-if has_application_server():
++# Again, this check is useless in our single node deployment
++if True:
+     if args.tornado_reshard:
+         affected_tornado_ports = update_tornado_sharding()
+         logging.info("Tornado ports affected by this resharding: %s", affected_tornado_ports)
+@@ -254,21 +228,21 @@ if has_application_server():
+                 # supervisord group where if any individual process is slow to
+                 # stop, the whole bundle stays stopped for an extended time.
+                 logging.info("%s Tornado process on port %s", verbing, p)
+-                restart_or_start(f"zulip-tornado:zulip-tornado-port-{p}")
++                restart_or_start(f"zulip-tornado-{p}.service")
+         else:
+             logging.info("%s Tornado process", verbing)
+-            restart_or_start("zulip-tornado:*")
++            restart_or_start("zulip-tornado.service")
+ 
+     # Finally, restart the Django uWSGI processes.
+     if (
+         action == "restart"
+         and not args.less_graceful
+         and get_config(config_file, "application_server", "rolling_restart", False)
+-        and os.path.exists("/home/zulip/deployments/uwsgi-control")
++        and os.path.exists("/run/zulip/control")
+     ):
+         # See if it's currently running
+         uwsgi_status = subprocess.run(
+-            ["supervisorctl", "status", "zulip-django"],
++            ["systemctl", "status", "zulip.service"],
+             stdout=subprocess.DEVNULL,
+             check=False,
+         )
+@@ -276,7 +250,7 @@ if has_application_server():
+             logging.info("Starting rolling restart of django server")
+             with contextlib.suppress(FileNotFoundError):
+                 os.unlink("/var/lib/zulip/django-workers.ready")
+-            with open("/home/zulip/deployments/uwsgi-control", "w") as control_socket:
++            with open("/run/zulip/control", "w") as control_socket:
+                 # "c" is chain-reloading:
+                 # https://uwsgi-docs.readthedocs.io/en/latest/MasterFIFO.html#available-commands
+                 control_socket.write("c")
+@@ -289,28 +263,28 @@ if has_application_server():
+             logging.info("Chain reloading complete")
+         else:
+             logging.info("Starting django server")
+-            subprocess.check_call(["supervisorctl", "start", "zulip-django"])
++            subprocess.check_call(["systemctl", "start", "zulip.service"])
+     else:
+         logging.info("%s django server", verbing)
+-        restart_or_start("zulip-django")
++        restart_or_start("zulip.service")
+ 
+-    using_sso = subprocess.check_output(["./scripts/get-django-setting", "USING_APACHE_SSO"])
+-    if using_sso.strip() == b"True":
+-        logging.info("Restarting Apache WSGI process...")
+-        subprocess.check_call(["pkill", "-x", "apache2", "-u", "zulip"])
++    # Apache SSO is not supported
+ 
+ # If we were doing this non-gracefully, or starting as opposed to
+ # restarting, we need to turn the workers (back) on.  There's no
+ # advantage to doing this not-all-at-once.
+ if (action == "start" or args.less_graceful) and not args.only_django:
+-    workers = list_supervisor_processes(workers, only_running=False)
++    workers = list_systemd_processes(
++        workers,
++        only_running=False,
++    )
+     if workers:
+         logging.info("Starting workers")
+-        subprocess.check_call(["supervisorctl", "start", *workers])
++        subprocess.check_call(["systemctl", "start", *workers])
+ 
++# has_application server thingy is for clustered version
+ if (
+-    has_application_server()
+-    and not args.skip_client_reloads
++    not args.skip_client_reloads
+     and not args.only_django
+     and not args.tornado_reshard
+ ):
+@@ -321,17 +295,3 @@ if (
+ 
+ logging.info("Done!")
+ print(OKGREEN + f"Zulip {action}ed successfully!" + ENDC)
+-
+-if change_symlink and "PWD" in os.environ:
+-    for symlink in [last_symlink, current_symlink]:
+-        if os.path.commonprefix([os.environ["PWD"], symlink]) == symlink:
+-            print(
+-                """
+-{}Your shell entered its current directory through a symlink:
+-  {}
+-which has now changed. Your shell will not see this change until you run:
+-  cd {}
+-to traverse the symlink again.{}
+-""".format(WARNING, symlink, shlex.quote(os.environ["PWD"]), ENDC),
+-                file=sys.stderr,
+-            )

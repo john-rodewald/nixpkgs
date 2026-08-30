@@ -1,0 +1,553 @@
+From 88e4e920d07440ac828a395610cbbff1c7f18b0c Mon Sep 17 00:00:00 2001
+From: Charles Hall <charles@computer.surgery>
+Date: Thu, 4 Sep 2025 09:18:27 -0700
+Subject: yeet backend large langle mangle support
+
+Localization data and documentation remains in place however to reduce
+the size of the diff. Frontend stuff remains because I don't know what
+I'm doing there.
+---
+ pyproject.toml                       |   3 -
+ tools/test-backend                   |  15 --
+ zerver/lib/events.py                 |   2 +-
+ zerver/middleware.py                 |  13 +-
+ zerver/tests/test_home.py            |   2 -
+ zerver/tests/test_message_summary.py | 218 ---------------------------
+ zerver/views/message_summary.py      |  39 -----
+ zproject/computed_settings.py        |   5 -
+ zproject/default_settings.py         |  10 --
+ zproject/dev_settings.py             |   6 -
+ zproject/prod_settings_template.py   |  22 ---
+ zproject/test_extra_settings.py      |   3 -
+ zproject/urls.py                     |   9 --
+ 13 files changed, 2 insertions(+), 345 deletions(-)
+ delete mode 100644 zerver/tests/test_message_summary.py
+ delete mode 100644 zerver/views/message_summary.py
+
+diff --git a/pyproject.toml b/pyproject.toml
+index 7635e08b25..c75bb51fa2 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -184,9 +184,6 @@ prod = [
+   "pydantic",
+   "annotated-types",
+ 
+-  # For requesting LLM API endpoints.
+-  "openai",
+-
+   # Used for running the Zulip production Django server
+   "uwsgi",
+ 
+diff --git a/tools/test-backend b/tools/test-backend
+index de446e1930..d631684aff 100755
+--- a/tools/test-backend
++++ b/tools/test-backend
+@@ -279,11 +279,6 @@ def main() -> None:
+         action="store_true",
+         help="Generate Stripe test fixtures by making requests to Stripe test network",
+     )
+-    parser.add_argument(
+-        "--generate-llm-fixtures",
+-        action="store_true",
+-        help="Generate LLM test fixtures using credentials in zproject/dev-secrets.conf",
+-    )
+     parser.add_argument("args", nargs="*")
+     parser.add_argument(
+         "--ban-console-output",
+@@ -392,16 +387,6 @@ def main() -> None:
+         default_parallel = 1
+         os.environ["GENERATE_STRIPE_FIXTURES"] = "1"
+ 
+-    if options.generate_llm_fixtures:
+-        if full_suite:
+-            suites = [
+-                "zerver.tests.test_message_summary",
+-            ]
+-            full_suite = False
+-        print("-- Forcing serial mode for generating LLM fixtures.", flush=True)
+-        default_parallel = 1
+-        os.environ["GENERATE_LLM_FIXTURES"] = "1"
+-
+     assert_provisioning_status_ok(options.skip_provision_check)
+ 
+     if options.coverage:
+diff --git a/zerver/lib/events.py b/zerver/lib/events.py
+index 4921ae73ce..9786c52ba8 100644
+--- a/zerver/lib/events.py
++++ b/zerver/lib/events.py
+@@ -575,7 +575,7 @@ def fetch_initial_state_data(
+             else server_default_jitsi_server_url
+         )
+ 
+-        state["server_can_summarize_topics"] = settings.TOPIC_SUMMARIZATION_MODEL is not None
++        state["server_can_summarize_topics"] = False
+ 
+         for channel_field in [
+             "moderation_request_channel_id",
+diff --git a/zerver/middleware.py b/zerver/middleware.py
+index 217108eed4..42c1b60025 100644
+--- a/zerver/middleware.py
++++ b/zerver/middleware.py
+@@ -26,7 +26,6 @@ from django_scim.settings import scim_settings
+ from sentry_sdk import set_tag
+ from typing_extensions import ParamSpec, override
+ 
+-from zerver.actions.message_summary import get_ai_requests, get_ai_time
+ from zerver.lib.cache import get_remote_cache_requests, get_remote_cache_time
+ from zerver.lib.db_connections import reset_queries
+ from zerver.lib.debug import maybe_tracemalloc_listen
+@@ -102,8 +101,6 @@ def record_request_start_data(log_data: MutableMapping[str, Any]) -> None:
+     log_data["remote_cache_requests_start"] = get_remote_cache_requests()
+     log_data["markdown_time_start"] = get_markdown_time()
+     log_data["markdown_requests_start"] = get_markdown_requests()
+-    log_data["ai_time_start"] = get_ai_time()
+-    log_data["ai_requests_start"] = get_ai_time()
+ 
+ 
+ def timedelta_ms(timedelta: float) -> float:
+@@ -191,14 +188,6 @@ def write_log_line(
+                 f" (md: {format_timedelta(markdown_time_delta)}/{markdown_count_delta})"
+             )
+ 
+-    ai_output = ""
+-    if "ai_time_start" in log_data:
+-        ai_time_delta = get_ai_time() - log_data["ai_time_start"]
+-        ai_count_delta = get_ai_requests() - log_data["ai_requests_start"]
+-
+-        if ai_time_delta > 0.005:
+-            ai_output = f" (ai: {format_timedelta(ai_time_delta)}/{ai_count_delta})"
+-
+     # Get the amount of time spent doing database queries
+     db_time_output = ""
+     queries = connection.connection.queries if connection.connection is not None else []
+@@ -214,7 +203,7 @@ def write_log_line(
+         logger_client = f"({requester_for_logs} via {client_name})"
+     else:
+         logger_client = f"({requester_for_logs} via {client_name}/{client_version})"
+-    logger_timing = f"{format_timedelta(time_delta):>5}{optional_orig_delta}{remote_cache_output}{markdown_output}{ai_output}{db_time_output}{startup_output} {path}"
++    logger_timing = f"{format_timedelta(time_delta):>5}{optional_orig_delta}{remote_cache_output}{markdown_output}{db_time_output}{startup_output} {path}"
+     logger_line = f"{remote_ip:<15} {method:<7} {status_code:3} {logger_timing}{extra_request_data} {logger_client}"
+     if status_code in [200, 304] and method == "GET" and path.startswith("/static"):
+         logger.debug(logger_line)
+diff --git a/zerver/tests/test_home.py b/zerver/tests/test_home.py
+index 75c49c0676..1ddc0db77e 100644
+--- a/zerver/tests/test_home.py
++++ b/zerver/tests/test_home.py
+@@ -158,7 +158,6 @@ class HomeTest(ZulipTestCase):
+         "realm_can_resolve_topics_group",
+         "realm_can_set_delete_message_policy_group",
+         "realm_can_set_topics_policy_group",
+-        "realm_can_summarize_topics_group",
+         "realm_create_multiuse_invite_group",
+         "realm_create_private_stream_policy",
+         "realm_create_public_stream_policy",
+@@ -248,7 +247,6 @@ class HomeTest(ZulipTestCase):
+         "saved_snippets",
+         "scheduled_messages",
+         "server_avatar_changes_disabled",
+-        "server_can_summarize_topics",
+         "server_emoji_data_url",
+         "server_generation",
+         "server_inline_image_preview",
+diff --git a/zerver/tests/test_message_summary.py b/zerver/tests/test_message_summary.py
+deleted file mode 100644
+index ef94ac9d76..0000000000
+--- a/zerver/tests/test_message_summary.py
++++ /dev/null
+@@ -1,218 +0,0 @@
+-from datetime import datetime, timezone
+-from unittest import mock
+-
+-import orjson
+-import time_machine
+-from django.conf import settings
+-from openai.resources.chat.completions import Completions
+-from openai.types.chat import ChatCompletion
+-from typing_extensions import override
+-
+-from analytics.models import UserCount
+-from zerver.actions.realm_settings import do_change_realm_permission_group_setting
+-from zerver.lib.test_classes import ZulipTestCase
+-from zerver.models import NamedUserGroup
+-from zerver.models.groups import SystemGroups
+-from zerver.models.realms import get_realm
+-
+-# Fixture file to store recorded responses
+-LLM_FIXTURES_FILE = "zerver/tests/fixtures/llm/summary.json"
+-
+-
+-class MessagesSummaryTestCase(ZulipTestCase):
+-    @override
+-    def setUp(self) -> None:
+-        super().setUp()
+-        self.user = self.example_user("iago")
+-        self.topic_name = "New feature launch"
+-        self.channel_name = "Zulip features"
+-
+-        self.login_user(self.user)
+-        self.subscribe(self.user, self.channel_name)
+-        content = "Zulip just launched a feature to generate summary of messages."
+-        self.send_stream_message(
+-            self.user, self.channel_name, content=content, topic_name=self.topic_name
+-        )
+-
+-        content = "Sounds awesome! This will **greatly** help me when catching up."
+-        self.send_stream_message(
+-            self.user, self.channel_name, content=content, topic_name=self.topic_name
+-        )
+-
+-        # Tests fail on the last day of the month due to us capturing the credit usage for that day
+-        # on the first of the next month, so we need to set the date to a different day.
+-        not_last_day_of_any_month = datetime(2025, 2, 18, 1, tzinfo=timezone.utc)
+-
+-        self.mocked_time_patcher = time_machine.travel(not_last_day_of_any_month, tick=False)
+-        self.mocked_time_patcher.start()
+-        if settings.GENERATE_LLM_FIXTURES:  # nocoverage
+-            # Forward calls to the real `create` method via side_effect.
+-            # autospec=True makes the patched mock honor the descriptor
+-            # protocol so the action's `client.chat.completions.create(...)`
+-            # call passes `self` (the action's own Completions instance).
+-            self.patcher = mock.patch.object(
+-                Completions, "create", autospec=True, side_effect=Completions.create
+-            )
+-            self.mocked_completion = self.patcher.start()
+-
+-    @override
+-    def tearDown(self) -> None:
+-        self.mocked_time_patcher.stop()
+-        if settings.GENERATE_LLM_FIXTURES:  # nocoverage
+-            self.patcher.stop()
+-        super().tearDown()
+-
+-    def test_summarize_messages_in_topic(self) -> None:
+-        narrow = orjson.dumps([["channel", self.channel_name], ["topic", self.topic_name]]).decode()
+-
+-        if settings.GENERATE_LLM_FIXTURES:  # nocoverage
+-            # NOTE: You need have proper credentials in zproject/dev-secrets.conf
+-            # to generate the fixtures.
+-            # Trigger the API call to extract the arguments.
+-            self.client_get("/json/messages/summary", dict(narrow=narrow))
+-            call_args = self.mocked_completion.call_args
+-
+-            # Once we have the arguments, call the original method and save its response.
+-            response = self.mocked_completion(*call_args.args, **call_args.kwargs)
+-            with open(LLM_FIXTURES_FILE, "wb") as f:
+-                fixture_data = {
+-                    # Only store model and messages.
+-                    # We don't want to store any secrets.
+-                    "model": call_args.kwargs["model"],
+-                    "messages": call_args.kwargs["messages"],
+-                    "response": response.model_dump(mode="json"),
+-                }
+-                f.write(orjson.dumps(fixture_data, option=orjson.OPT_INDENT_2) + b"\n")
+-            return
+-
+-        # In this code path, we test using the fixtures.
+-        with open(LLM_FIXTURES_FILE, "rb") as f:
+-            fixture_data = orjson.loads(f.read())
+-
+-        fake_response = ChatCompletion.model_validate(fixture_data["response"])
+-
+-        # Block summary requests if budget set to 0.
+-        with self.settings(
+-            TOPIC_SUMMARIZATION_MODEL="llama-3.3-70b-versatile",
+-            MAX_PER_USER_MONTHLY_AI_COST=0,
+-        ):
+-            response = self.client_get("/json/messages/summary")
+-            self.assert_json_error_contains(response, "Reached monthly limit for AI credits.")
+-
+-        # Fake credentials to ensure we crash if actual network
+-        # requests occur, which would reflect a problem with how the
+-        # fixtures were set up.
+-        with self.settings(
+-            TOPIC_SUMMARIZATION_MODEL="llama-3.3-70b-versatile",
+-            TOPIC_SUMMARIZATION_API_KEY="test",
+-        ):
+-            input_tokens = fixture_data["response"]["usage"]["prompt_tokens"]
+-            output_tokens = fixture_data["response"]["usage"]["completion_tokens"]
+-            credits_used = (output_tokens * settings.OUTPUT_COST_PER_GIGATOKEN) + (
+-                input_tokens * settings.INPUT_COST_PER_GIGATOKEN
+-            )
+-            self.assertFalse(
+-                UserCount.objects.filter(
+-                    property="ai_credit_usage::day", value=credits_used, user_id=self.user.id
+-                ).exists()
+-            )
+-            with mock.patch.object(Completions, "create", return_value=fake_response):
+-                payload = self.client_get("/json/messages/summary", dict(narrow=narrow))
+-                self.assertEqual(payload.status_code, 200)
+-            # Check that we recorded this usage.
+-            self.assertTrue(
+-                UserCount.objects.filter(
+-                    property="ai_credit_usage::day", value=credits_used, user_id=self.user.id
+-                ).exists()
+-            )
+-
+-        # If we reached the credit usage limit, block summary requests.
+-        with self.settings(
+-            TOPIC_SUMMARIZATION_MODEL="llama-3.3-70b-versatile",
+-            MAX_PER_USER_MONTHLY_AI_COST=credits_used / 1000000000,
+-        ):
+-            response = self.client_get("/json/messages/summary")
+-            self.assert_json_error_contains(response, "Reached monthly limit for AI credits.")
+-
+-    def test_permission_to_summarize_message_in_topics(self) -> None:
+-        narrow = orjson.dumps([["channel", self.channel_name], ["topic", self.topic_name]]).decode()
+-
+-        realm = get_realm("zulip")
+-        moderators_group = NamedUserGroup.objects.get(
+-            name=SystemGroups.MODERATORS, realm_for_sharding=realm, is_system_group=True
+-        )
+-
+-        do_change_realm_permission_group_setting(
+-            realm,
+-            "can_summarize_topics_group",
+-            moderators_group,
+-            acting_user=None,
+-        )
+-
+-        # In this code path, we test using the fixtures.
+-        with open(LLM_FIXTURES_FILE, "rb") as f:
+-            fixture_data = orjson.loads(f.read())
+-
+-        fake_response = ChatCompletion.model_validate(fixture_data["response"])
+-
+-        def check_message_summary_permission(user: str, expect_fail: bool = False) -> None:
+-            self.login(user)
+-            with (
+-                self.settings(
+-                    TOPIC_SUMMARIZATION_MODEL="llama-3.3-70b-versatile",
+-                    TOPIC_SUMMARIZATION_API_KEY="test",
+-                ),
+-                mock.patch.object(Completions, "create", return_value=fake_response),
+-            ):
+-                result = self.client_get("/json/messages/summary", dict(narrow=narrow))
+-
+-            if expect_fail:
+-                self.assert_json_error(result, "Insufficient permission")
+-            else:
+-                self.assert_json_success(result)
+-
+-        check_message_summary_permission("hamlet", expect_fail=True)
+-        check_message_summary_permission("shiva")
+-
+-        nobody_group = NamedUserGroup.objects.get(
+-            name=SystemGroups.NOBODY, realm_for_sharding=realm, is_system_group=True
+-        )
+-        do_change_realm_permission_group_setting(
+-            realm,
+-            "can_summarize_topics_group",
+-            nobody_group,
+-            acting_user=None,
+-        )
+-
+-        check_message_summary_permission("desdemona", expect_fail=True)
+-
+-        hamletcharacters_group = NamedUserGroup.objects.get(
+-            name="hamletcharacters", realm_for_sharding=realm
+-        )
+-        do_change_realm_permission_group_setting(
+-            realm,
+-            "can_summarize_topics_group",
+-            hamletcharacters_group,
+-            acting_user=None,
+-        )
+-
+-        check_message_summary_permission("desdemona", expect_fail=True)
+-        check_message_summary_permission("othello", expect_fail=True)
+-        check_message_summary_permission("hamlet")
+-        check_message_summary_permission("cordelia")
+-
+-        setting_group = self.create_or_update_anonymous_group_for_setting(
+-            [self.example_user("othello")], [moderators_group]
+-        )
+-        do_change_realm_permission_group_setting(
+-            realm,
+-            "can_summarize_topics_group",
+-            setting_group,
+-            acting_user=None,
+-        )
+-
+-        check_message_summary_permission("cordelia", expect_fail=True)
+-        check_message_summary_permission("hamlet", expect_fail=True)
+-        check_message_summary_permission("othello")
+-        check_message_summary_permission("shiva")
+-        check_message_summary_permission("desdemona")
+diff --git a/zerver/views/message_summary.py b/zerver/views/message_summary.py
+deleted file mode 100644
+index 48dcfbfea1..0000000000
+--- a/zerver/views/message_summary.py
++++ /dev/null
+@@ -1,39 +0,0 @@
+-from django.conf import settings
+-from django.http import HttpRequest, HttpResponse
+-from django.utils.translation import gettext as _
+-from pydantic import Json
+-
+-from analytics.lib.counts import COUNT_STATS
+-from zerver.actions.message_summary import do_summarize_narrow
+-from zerver.lib.exceptions import JsonableError
+-from zerver.lib.narrow import NarrowParameter
+-from zerver.lib.response import json_success
+-from zerver.lib.typed_endpoint import typed_endpoint
+-from zerver.models import UserProfile
+-
+-
+-@typed_endpoint
+-def get_messages_summary(
+-    request: HttpRequest,
+-    user_profile: UserProfile,
+-    *,
+-    narrow: Json[list[NarrowParameter] | None] = None,
+-) -> HttpResponse:
+-    if settings.TOPIC_SUMMARIZATION_MODEL is None:  # nocoverage
+-        raise JsonableError(_("AI features are not enabled on this server."))
+-
+-    if not user_profile.can_summarize_topics():
+-        raise JsonableError(_("Insufficient permission"))
+-
+-    if settings.MAX_PER_USER_MONTHLY_AI_COST is not None:
+-        used_credits = COUNT_STATS["ai_credit_usage::day"].current_month_accumulated_count_for_user(
+-            user_profile
+-        )
+-        if used_credits >= settings.MAX_PER_USER_MONTHLY_AI_COST * 1000000000:
+-            raise JsonableError(_("Reached monthly limit for AI credits."))
+-
+-    summary = do_summarize_narrow(user_profile, narrow)
+-    if summary is None:  # nocoverage
+-        raise JsonableError(_("No messages in conversation to summarize"))
+-
+-    return json_success(request, {"summary": summary})
+diff --git a/zproject/computed_settings.py b/zproject/computed_settings.py
+index b9128138b5..077955e126 100644
+--- a/zproject/computed_settings.py
++++ b/zproject/computed_settings.py
+@@ -189,8 +189,6 @@ RUNNING_OPENAPI_CURL_TEST = False
+ # This is overridden in test_settings.py for the test suites
+ GENERATE_STRIPE_FIXTURES = False
+ # This is overridden in test_settings.py for the test suites
+-GENERATE_LLM_FIXTURES = False
+-# This is overridden in test_settings.py for the test suites
+ BAN_CONSOLE_OUTPUT = False
+ # This is overridden in test_settings.py for the test suites
+ TEST_WORKER_DIR = ""
+@@ -1301,7 +1299,4 @@ SCIM_SERVICE_PROVIDER = {
+     ],
+ }
+ 
+-# Which API key to use will be determined based on TOPIC_SUMMARIZATION_MODEL.
+-TOPIC_SUMMARIZATION_API_KEY = get_secret("topic_summarization_api_key", None)
+-
+ PARTIAL_USERS = bool(os.environ.get("PARTIAL_USERS"))
+diff --git a/zproject/default_settings.py b/zproject/default_settings.py
+index 7ba59d15f8..d8c97e3c83 100644
+--- a/zproject/default_settings.py
++++ b/zproject/default_settings.py
+@@ -764,16 +764,6 @@ MAX_WEB_DATA_IMPORT_SIZE_MB: int | None = 0
+ MIN_DEACTIVATED_REALM_DELETION_DAYS: int | None = 14
+ MAX_DEACTIVATED_REALM_DELETION_DAYS: int | None = None
+ 
+-
+-TOPIC_SUMMARIZATION_MODEL: str | None = None
+-TOPIC_SUMMARIZATION_API_BASE: str | None = None
+-TOPIC_SUMMARIZATION_PARAMETERS: dict[str, Any] = {}
+-# Price per token for input and output tokens, and maximum cost. Units
+-# are arbitrarily, but typically will be USD.
+-INPUT_COST_PER_GIGATOKEN: int = 0
+-OUTPUT_COST_PER_GIGATOKEN: int = 0
+-MAX_PER_USER_MONTHLY_AI_COST: float | None = 0.5
+-
+ # URL of the navigation tour video displayed to new users.
+ # Set it to None to disable it.
+ NAVIGATION_TOUR_VIDEO_URL: str | None = (
+diff --git a/zproject/dev_settings.py b/zproject/dev_settings.py
+index 07e8c8b1af..53cf252f9a 100644
+--- a/zproject/dev_settings.py
++++ b/zproject/dev_settings.py
+@@ -230,12 +230,6 @@ DEMO_ORG_DEADLINE_DAYS = 30
+ if external_host_env is None and not IS_DEV_DROPLET:
+     USING_CAPTCHA = True
+ 
+-TOPIC_SUMMARIZATION_MODEL = "groq/llama-3.3-70b-versatile"
+-# Defaults based on groq's pricing for Llama 3.3 70B Versatile 128k.
+-# https://groq.com/pricing/
+-OUTPUT_COST_PER_GIGATOKEN = 590
+-INPUT_COST_PER_GIGATOKEN = 790
+-MAX_PER_USER_MONTHLY_AI_COST = 1
+ MAX_WEB_DATA_IMPORT_SIZE_MB = 1024
+ 
+ # We override some rate limiting rules in development, when they prove
+diff --git a/zproject/prod_settings_template.py b/zproject/prod_settings_template.py
+index afdfc44634..5db34ebb24 100644
+--- a/zproject/prod_settings_template.py
++++ b/zproject/prod_settings_template.py
+@@ -809,28 +809,6 @@ SOCIAL_AUTH_SAML_SUPPORT_CONTACT = {
+ ## zulip-secrets.conf.
+ # NEXTCLOUD_SERVER = "https://nextcloud.example.com"
+ 
+-################
+-## AI Features
+-##
+-## Specify the model to use for topic summarization. Zulip uses the
+-## OpenAI Python SDK, which supports OpenAI's API as well as any
+-## OpenAI-compatible provider.
+-# TOPIC_SUMMARIZATION_MODEL = "meta-llama/Meta-Llama-3-8B-Instruct"
+-## Override the API base URL when using an OpenAI-compatible provider
+-## (e.g., Hugging Face, Groq, Together, or a self-hosted endpoint).
+-## Leave unset to use OpenAI's default endpoint.
+-# TOPIC_SUMMARIZATION_API_BASE = "https://router.huggingface.co/v1"
+-## Other configuration parameters, passed through to the OpenAI SDK's
+-## `chat.completions.create` call. See
+-## https://platform.openai.com/docs/api-reference/chat/create
+-# TOPIC_SUMMARIZATION_PARAMETERS = {}
+-
+-## Set usage costs based on your model, and a maximum per-user monthly
+-## quota. Units are USD or other currency of your choice.
+-# OUTPUT_COST_PER_GIGATOKEN = 500
+-# INPUT_COST_PER_GIGATOKEN = 400
+-# MAX_PER_USER_MONTHLY_AI_COST = 0.5
+-
+ ################
+ ## Miscellaneous settings.
+ 
+diff --git a/zproject/test_extra_settings.py b/zproject/test_extra_settings.py
+index 44e23ad6d3..0a2a2c1e88 100644
+--- a/zproject/test_extra_settings.py
++++ b/zproject/test_extra_settings.py
+@@ -54,9 +54,6 @@ if "RUNNING_OPENAPI_CURL_TEST" in os.environ:
+ if "GENERATE_STRIPE_FIXTURES" in os.environ:
+     GENERATE_STRIPE_FIXTURES = True
+ 
+-if "GENERATE_LLM_FIXTURES" in os.environ:
+-    GENERATE_LLM_FIXTURES = True
+-
+ if "BAN_CONSOLE_OUTPUT" in os.environ:
+     BAN_CONSOLE_OUTPUT = True
+ 
+diff --git a/zproject/urls.py b/zproject/urls.py
+index fe37bc5d93..954362b6da 100644
+--- a/zproject/urls.py
++++ b/zproject/urls.py
+@@ -86,7 +86,6 @@ from zerver.views.message_flags import (
+ )
+ from zerver.views.message_report import report_message_backend
+ from zerver.views.message_send import render_message_backend, send_message_backend, zcommand_backend
+-from zerver.views.message_summary import get_messages_summary
+ from zerver.views.muted_users import mute_user, unmute_user
+ from zerver.views.navigation_views import (
+     add_navigation_view,
+@@ -426,14 +425,6 @@ v1_api_and_json_patterns = [
+         PATCH=update_message_backend,
+         DELETE=delete_message_backend,
+     ),
+-    rest_path(
+-        "messages/summary",
+-        GET=(
+-            get_messages_summary,
+-            # Not documented since the API details haven't been finalized yet.
+-            {"intentionally_undocumented"},
+-        ),
+-    ),
+     rest_path("messages/render", POST=render_message_backend),
+     rest_path("messages/flags", POST=update_message_flags),
+     rest_path("messages/flags/narrow", POST=update_message_flags_for_narrow),

@@ -1,0 +1,25 @@
+From 164bdf984878ec3b15707812385817d9ec8ab5d4 Mon Sep 17 00:00:00 2001
+From: sinavir <sinavir@sinavir.fr>
+Date: Wed, 29 Apr 2026 14:48:47 +0200
+Subject: proxy: set defaults to no proxy
+
+We don't have smokescreen for now
+---
+ zerver/lib/outgoing_http.py | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/zerver/lib/outgoing_http.py b/zerver/lib/outgoing_http.py
+index 9e77eb82a4..fd583ac5f6 100644
+--- a/zerver/lib/outgoing_http.py
++++ b/zerver/lib/outgoing_http.py
+@@ -42,8 +42,8 @@ class OutgoingSession(requests.Session):
+             self.headers.update(headers)
+ 
+         if proxies is None and not settings.DEVELOPMENT:
+-            proxy_host = get_config("http_proxy", "host", "localhost")
+-            proxy_port = get_config("http_proxy", "port", "4750")
++            proxy_host = get_config("http_proxy", "host", "")
++            proxy_port = get_config("http_proxy", "port", "")
+             proxy = ""
+             if proxy_host != "" and proxy_port != "":
+                 proxy = f"http://{proxy_host}:{proxy_port}"

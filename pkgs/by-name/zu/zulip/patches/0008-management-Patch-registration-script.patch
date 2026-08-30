@@ -1,0 +1,100 @@
+From 63b215a92e5d86866a1bc38ee2d4cf8d222df5a4 Mon Sep 17 00:00:00 2001
+From: sinavir <sinavir@sinavir.fr>
+Date: Fri, 27 Jun 2025 21:32:37 +0200
+Subject: management: Patch registration script
+
+The registration script heavily relies on the fhs settings architecture.
+---
+ zerver/management/commands/register_server.py | 52 +++----------------
+ 1 file changed, 6 insertions(+), 46 deletions(-)
+
+diff --git a/zerver/management/commands/register_server.py b/zerver/management/commands/register_server.py
+index 0e90aa5f83..aa071619f5 100644
+--- a/zerver/management/commands/register_server.py
++++ b/zerver/management/commands/register_server.py
+@@ -1,5 +1,3 @@
+-import os
+-import subprocess
+ from argparse import ArgumentParser
+ from typing import Any
+ 
+@@ -18,11 +16,6 @@ from zerver.lib.remote_server import (
+     send_server_data_to_push_bouncer,
+ )
+ 
+-if settings.DEVELOPMENT:
+-    SECRETS_FILENAME = "zproject/dev-secrets.conf"
+-else:
+-    SECRETS_FILENAME = "/etc/zulip/zulip-secrets.conf"
+-
+ 
+ class Command(ZulipBaseCommand):
+     help = """Register a remote Zulip server for push notifications."""
+@@ -88,8 +81,6 @@ that registration and saving the updated secret in
+             "contact_email": settings.ZULIP_ADMINISTRATOR,
+         }
+         if options["rotate_key"]:
+-            if not os.access(SECRETS_FILENAME, os.W_OK):
+-                raise CommandError(f"{SECRETS_FILENAME} is not writable by the current user.")
+             request["new_org_key"] = get_random_string(64)
+ 
+         print(
+@@ -140,21 +131,11 @@ that registration and saving the updated secret in
+             )
+         else:
+             if options["rotate_key"]:
+-                print(f"Success! Updating {SECRETS_FILENAME} with the new key...")
++                print("Success! Here are your new settings:")
+                 new_org_key = request["new_org_key"]
+                 assert isinstance(new_org_key, str)
+-                subprocess.check_call(
+-                    [
+-                        "crudini",
+-                        "--inplace",
+-                        "--set",
+-                        SECRETS_FILENAME,
+-                        "secrets",
+-                        "zulip_org_key",
+-                        new_org_key,
+-                    ]
+-                )
+-            print("Mobile Push Notification Service registration successfully updated!")
++                print(f"Org key: {new_org_key!r}")
++                print("Mobile Push Notification Service registration successfully updated!")
+ 
+         if options["registration_transfer"]:
+             print()
+@@ -184,30 +165,9 @@ that registration and saving the updated secret in
+         org_id = response.json()["zulip_org_id"]
+         org_key = response.json()["zulip_org_key"]
+         # Update the secrets file.
+-        print("Success! Updating secrets file with received credentials.")
+-        subprocess.check_call(
+-            [
+-                "crudini",
+-                "--inplace",
+-                "--set",
+-                SECRETS_FILENAME,
+-                "secrets",
+-                "zulip_org_id",
+-                org_id,
+-            ]
+-        )
+-        subprocess.check_call(
+-            [
+-                "crudini",
+-                "--inplace",
+-                "--set",
+-                SECRETS_FILENAME,
+-                "secrets",
+-                "zulip_org_key",
+-                org_key,
+-            ]
+-        )
+-        print("Mobile Push Notification Service registration successfully transferred.")
++        print("Success! Here are the received credentials:")
++        print(f"Org id: {org_id!r}")
++        print(f"Org key: {org_key!r}")
+         return org_id, org_key
+ 
+     def _request_push_notification_bouncer_url(self, url: str, params: dict[str, Any]) -> Response:

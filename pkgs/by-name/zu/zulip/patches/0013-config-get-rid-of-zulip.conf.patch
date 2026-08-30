@@ -1,0 +1,22 @@
+From 62cbbb9c11b95ce827138a1c552eabc98563ce75 Mon Sep 17 00:00:00 2001
+From: sinavir <sinavir@sinavir.fr>
+Date: Sun, 26 Apr 2026 23:15:06 +0200
+Subject: config: get rid of zulip.conf
+
+---
+ zproject/config.py | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/zproject/config.py b/zproject/config.py
+index 42f174d427..372c35bc5a 100644
+--- a/zproject/config.py
++++ b/zproject/config.py
+@@ -17,7 +17,7 @@ config_file = configparser.RawConfigParser()
+ config_file.read("/etc/zulip/zulip.conf")
+ 
+ # Whether this instance of Zulip is running in a production environment.
+-PRODUCTION = config_file.has_option("machine", "deploy_type")
++PRODUCTION = os.environ.get("DEVELOPMENT") != "1"
+ DEVELOPMENT = not PRODUCTION
+ 
+ credentials = loadcredential.Credentials()

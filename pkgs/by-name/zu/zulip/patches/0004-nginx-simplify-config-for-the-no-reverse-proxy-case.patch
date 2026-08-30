@@ -1,0 +1,57 @@
+From 3c84a45f3d3279a12499a3d8de255c2f30c5154a Mon Sep 17 00:00:00 2001
+From: sinavir <sinavir@sinavir.fr>
+Date: Fri, 27 Jun 2025 19:35:03 +0200
+Subject: nginx: simplify config for the no reverse proxy case
+
+We don't aim at supporting reverse proxies. Thus
+puppet/zulip/templates/nginx/trusted-proto.template.erb is complicating
+the config for nothing. Let's override the variables defined in that
+file.
+---
+ puppet/zulip/files/nginx/uwsgi_params               | 8 ++++----
+ puppet/zulip/files/nginx/zulip-include-common/proxy | 8 ++++----
+ 2 files changed, 8 insertions(+), 8 deletions(-)
+
+diff --git a/puppet/zulip/files/nginx/uwsgi_params b/puppet/zulip/files/nginx/uwsgi_params
+index cc4e0904e5..6ab5211e1b 100644
+--- a/puppet/zulip/files/nginx/uwsgi_params
++++ b/puppet/zulip/files/nginx/uwsgi_params
+@@ -8,15 +8,15 @@ uwsgi_param DOCUMENT_ROOT   $document_root;
+ uwsgi_param SERVER_PROTOCOL $server_protocol;
+ uwsgi_param REQUEST_SCHEME  $scheme;
+ uwsgi_param HTTPS           $https if_not_empty;
+-uwsgi_param REMOTE_ADDR     $trusted_remote_addr;
++uwsgi_param REMOTE_ADDR     $remote_addr;
+ uwsgi_param REMOTE_PORT     $remote_port;
+ uwsgi_param SERVER_ADDR     $server_addr;
+ uwsgi_param SERVER_PORT     $server_port;
+ uwsgi_param SERVER_NAME     $server_name;
+-uwsgi_param HTTP_X_REAL_IP  $trusted_remote_addr;
+-uwsgi_param HTTP_X_FORWARDED_PROTO $trusted_x_forwarded_proto;
++uwsgi_param HTTP_X_REAL_IP  $remote_addr;
++uwsgi_param HTTP_X_FORWARDED_PROTO $scheme;
+ uwsgi_param HTTP_X_FORWARDED_SSL "";
+-uwsgi_param HTTP_X_PROXY_MISCONFIGURATION $x_proxy_misconfiguration;
++uwsgi_param HTTP_X_PROXY_MISCONFIGURATION "";
+ 
+ # This value is the default, and is provided for explicitness; it must
+ # be longer than the configured 55s "harakiri" timeout in uwsgi
+diff --git a/puppet/zulip/files/nginx/zulip-include-common/proxy b/puppet/zulip/files/nginx/zulip-include-common/proxy
+index e6d5323424..7841fedee8 100644
+--- a/puppet/zulip/files/nginx/zulip-include-common/proxy
++++ b/puppet/zulip/files/nginx/zulip-include-common/proxy
+@@ -2,10 +2,10 @@ proxy_http_version 1.1;
+ # Clearing the Connection header is required for keepalives from the load balancer
+ # http://nginx.org/en/docs/http/ngx_http_upstream_module.html#keepalive
+ proxy_set_header Connection "";
+-proxy_set_header Host $http_host;
+-proxy_set_header X-Forwarded-Proto $trusted_x_forwarded_proto;
++proxy_set_header Host $host;
++proxy_set_header X-Forwarded-Proto $scheme;
+ proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+-proxy_set_header X-Real-Ip $trusted_remote_addr;
+-proxy_set_header X-Proxy-Misconfiguration $x_proxy_misconfiguration;
++proxy_set_header X-Real-Ip $remote_addr;
++proxy_set_header X-Proxy-Misconfiguration "";
+ proxy_next_upstream off;
+ proxy_redirect off;

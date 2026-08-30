@@ -1,0 +1,42 @@
+From 3bf35b807c62fe1d7eb40977dc8563de15ec29f0 Mon Sep 17 00:00:00 2001
+From: sinavir <sinavir@sinavir.fr>
+Date: Fri, 27 Jun 2025 19:34:07 +0200
+Subject: computed-settings: Make persistent queue filename tunable
+
+---
+ zproject/computed_settings.py      | 3 ++-
+ zproject/prod_settings_template.py | 3 +++
+ 2 files changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/zproject/computed_settings.py b/zproject/computed_settings.py
+index 207d999334..8cf2e94c30 100644
+--- a/zproject/computed_settings.py
++++ b/zproject/computed_settings.py
+@@ -68,6 +68,7 @@ from .configured_settings import (
+     STATIC_URL,
+     SUBMIT_USAGE_STATISTICS,
+     TORNADO_PORTS,
++    TORNADO_QUEUE_FILENAME_PATTERN,
+     USING_CAPTCHA,
+     USING_PGROONGA,
+     ZULIP_ADMINISTRATOR,
+@@ -748,7 +749,7 @@ ERROR_FILE_LOG_PATH = zulip_path("/var/log/zulip/errors.log")
+ MANAGEMENT_LOG_PATH = zulip_path("/var/log/zulip/manage.log")
+ WORKER_LOG_PATH = zulip_path("/var/log/zulip/workers.log")
+ SLOW_QUERIES_LOG_PATH = zulip_path("/var/log/zulip/slow_queries.log")
+-JSON_PERSISTENT_QUEUE_FILENAME_PATTERN = zulip_path("/home/zulip/tornado/event_queues%s.json")
++JSON_PERSISTENT_QUEUE_FILENAME_PATTERN = zulip_path(TORNADO_QUEUE_FILENAME_PATTERN)
+ EMAIL_LOG_PATH = zulip_path("/var/log/zulip/send_email.log")
+ EMAIL_MIRROR_LOG_PATH = zulip_path("/var/log/zulip/email_mirror.log")
+ EMAIL_DELIVERER_LOG_PATH = zulip_path("/var/log/zulip/email_deliverer.log")
+diff --git a/zproject/prod_settings_template.py b/zproject/prod_settings_template.py
+index 053545d633..319ef58db4 100644
+--- a/zproject/prod_settings_template.py
++++ b/zproject/prod_settings_template.py
+@@ -978,3 +978,6 @@ CAMO_URI = "/external_content/"
+ ##
+ ## A value of None disables the navigation tour video experience.
+ # NAVIGATION_TOUR_VIDEO_URL = "https://static.zulipchat.com/static/navigation-tour-video/zulip-10.mp4"
++
++## Nixos specific settings
++TORNADO_QUEUE_FILENAME_PATTERN = "/var/lib/zulip/tornado_event_queues%s.json"
