@@ -3541,6 +3541,8 @@ self: super: with self; {
 
   commonregex = callPackage ../development/python-modules/commonregex { };
 
+  compare-locales = callPackage ../development/python-modules/compare-locales { };
+
   compit-inext-api = callPackage ../development/python-modules/compit-inext-api { };
 
   compliance-trestle = callPackage ../development/python-modules/compliance-trestle { };
@@ -4527,6 +4529,8 @@ self: super: with self; {
   # LTS with mainsteam support
   django = self.django_5;
 
+  django-ace = callPackage ../development/python-modules/django-ace { };
+
   django-admin-datta = callPackage ../development/python-modules/django-admin-datta { };
 
   django-admin-sortable2 = callPackage ../development/python-modules/django-admin-sortable2 { };
@@ -4620,6 +4624,8 @@ self: super: with self; {
   django-dbbackup = callPackage ../development/python-modules/django-dbbackup { };
 
   django-debug-toolbar = callPackage ../development/python-modules/django-debug-toolbar { };
+
+  django-dirtyfields = callPackage ../development/python-modules/django-dirtyfields { };
 
   django-dynamic-preferences =
     callPackage ../development/python-modules/django-dynamic-preferences
@@ -4751,6 +4757,10 @@ self: super: with self; {
     callPackage ../development/python-modules/django-ninja-cursor-pagination
       { };
 
+  django-notifications-community =
+    callPackage ../development/python-modules/django-notifications-community
+      { };
+
   django-oauth-toolkit = callPackage ../development/python-modules/django-oauth-toolkit { };
 
   django-organizations = callPackage ../development/python-modules/django-organizations { };
@@ -4782,6 +4792,8 @@ self: super: with self; {
   django-phonenumber-field = callPackage ../development/python-modules/django-phonenumber-field { };
 
   django-picklefield = callPackage ../development/python-modules/django-picklefield { };
+
+  django-pipeline = callPackage ../development/python-modules/django-pipeline { };
 
   django-polymorphic = callPackage ../development/python-modules/django-polymorphic { };
 
@@ -6848,6 +6860,8 @@ self: super: with self; {
   github3-py = callPackage ../development/python-modules/github3-py { };
 
   githubkit = callPackage ../development/python-modules/githubkit { };
+
+  gitignorant = callPackage ../development/python-modules/gitignorant { };
 
   gitignore-parser = callPackage ../development/python-modules/gitignore-parser { };
 
@@ -11174,6 +11188,8 @@ self: super: with self; {
   moviepy = callPackage ../development/python-modules/moviepy { };
 
   moyopy = callPackage ../development/python-modules/moyopy { };
+
+  moz-l10n = callPackage ../development/python-modules/moz-l10n { };
 
   mozart-api = callPackage ../development/python-modules/mozart-api { };
 
