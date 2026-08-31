@@ -1805,6 +1805,7 @@
   ./services/web-apps/peering-manager.nix
   ./services/web-apps/peertube-runner.nix
   ./services/web-apps/peertube.nix
+  ./services/web-apps/penpot.nix
   ./services/web-apps/pgpkeyserver-lite.nix
   ./services/web-apps/photoprism.nix
   ./services/web-apps/photoview.nix
