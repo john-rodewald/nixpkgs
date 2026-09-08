@@ -782,6 +782,7 @@ in
   goupile = runTest ./web-apps/goupile;
   grafana = handleTest ./grafana { };
   grafana-to-ntfy = runTest ./grafana-to-ntfy.nix;
+  grafeo-server = runTest ./grafeo-server.nix;
   graphite = runTest ./graphite.nix;
   grav = runTest ./web-apps/grav.nix;
   graylog = runTest ./graylog.nix;
