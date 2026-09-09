@@ -574,6 +574,7 @@ in
   etebase-server = runTest ./etebase-server.nix;
   etesync-dav = runTest ./etesync-dav.nix;
   evcc = runTest ./evcc.nix;
+  excalidraw = import ./excalidraw { inherit runTest; };
   extra-initrd = import ./extra-initrd.nix {
     inherit runTest pkgs;
   };
